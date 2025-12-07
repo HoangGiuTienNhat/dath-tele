@@ -287,6 +287,7 @@ paths:
         Trả về danh sách tất cả các link chia sẻ mà người dùng hiện tại đã tạo.
         Hỗ trợ phân trang để hiển thị kết quả.
         Shares được sắp xếp theo thời gian tạo (mới nhất trước).
+        Response bao gồm thông tin file và metadata của từng share.
       tags:
         - Shares
       parameters:
@@ -307,13 +308,11 @@ paths:
             default: 0
       responses:
         "200":
-          description: Thành công – danh sách shares
+          description: Thành công – danh sách shares kèm thông tin pagination
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Share"
+                $ref: "#/components/schemas/ShareListResponse"
         "401":
           description: Unauthorized – Thiếu hoặc sai authentication token
           content:
@@ -895,3 +894,83 @@ components:
         created_at: { type: string }
         file: { $ref: "#/components/schemas/FileMetadata" }
         owner: { $ref: "#/components/schemas/UserMinimal" }
+
+    ShareListItem:
+      type: object
+      description: Thông tin chi tiết của một share trong danh sách
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: ID của share
+          example: 1
+        file_id:
+          type: integer
+          format: int64
+          description: ID của file được chia sẻ
+          example: 101
+        hash:
+          type: string
+          description: Chuỗi định danh duy nhất của link share
+          example: "a1b2c3d4"
+        require_password:
+          type: boolean
+          description: Yêu cầu mật khẩu để tải file
+          example: true
+        revoked:
+          type: boolean
+          description: Trạng thái thu hồi (true là đã thu hồi)
+          example: false
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Thời gian hết hạn link (null là vĩnh viễn)
+        created_at:
+          type: string
+          format: date-time
+          description: Thời gian tạo share
+        updated_at:
+          type: string
+          format: date-time
+          description: Thời gian cập nhật lần cuối
+        filename:
+          type: string
+          description: Tên file được chia sẻ
+          example: "document.pdf"
+        file_size:
+          type: integer
+          format: int64
+          description: Kích thước file (bytes)
+          example: 204800
+        file_mime:
+          type: string
+          description: MIME type của file
+          example: "application/pdf"
+        file_status:
+          type: string
+          description: Trạng thái của file
+          example: "completed"
+
+    ShareListResponse:
+      type: object
+      description: Response cho API liệt kê shares
+      properties:
+        shares:
+          type: array
+          description: Danh sách các shares
+          items:
+            $ref: "#/components/schemas/ShareListItem"
+        total:
+          type: integer
+          format: int64
+          description: Tổng số shares của người dùng
+          example: 50
+        limit:
+          type: integer
+          description: Số lượng shares tối đa trong response
+          example: 20
+        offset:
+          type: integer
+          description: Vị trí bắt đầu
+          example: 0

@@ -2,15 +2,16 @@ package share
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"file-sharing/internal/model"
 	"file-sharing/internal/storage"
 	"log"
 	"time"
-	"crypto/rand"
-    "encoding/hex"
-    "golang.org/x/crypto/bcrypt"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Service interface {
@@ -18,21 +19,14 @@ type Service interface {
 
 	ListShares(ctx context.Context, userID int64, limit, offset int) ([]model.Share, error)
 
+	// ListSharesWithDetails lấy danh sách shares kèm thông tin file và tổng số
+	ListSharesWithDetails(ctx context.Context, userID int64, limit, offset int) (*model.ShareListResponseDTO, error)
+
 	// Tạo presigned URL cho download
 	CreatePresignedURL(ctx context.Context, shareID int64, requesterUserID int64, expirySeconds int) (string, error)
 
 	GetMetadata(ctx context.Context, id int64) (*model.ShareMetadataResponseDTO, error)
-	CreateShare(ctx context.Context, userID int64, req *CreateShareRequest) (*model.Share, error)
-}
-
-// đối tượng DTO mới để nhận request từ FE 
-// nên cải tiến lại trong docs cho giống với cấu trúc database hiện tại 
-// là không có việc nhập tên các người được phép tải recipients và from_ts (lấy luôn thời điểm lúc mới tạo xong) - ứng với 
-// trường created_at 
-type CreateShareRequest struct {
-	FileID    int64      `json:"file_id"`
-    Password  string     `json:"password"`
-    ExpiresAt *time.Time `json:"expires_at"`
+	CreateShare(ctx context.Context, userID int64, req *model.CreateShareRequest) (*model.Share, error)
 }
 
 type shareService struct {
@@ -45,13 +39,13 @@ func NewShareService(repo storage.ShareRepository) Service {
 	}
 }
 
-// Hàm sinh  chuỗi hash ngẫu nhiên 
+// Hàm sinh  chuỗi hash ngẫu nhiên
 func generateRandomHash(length int) (string, error) {
-    bytes := make([]byte, length)
-    if _, err := rand.Read(bytes); err != nil {
-        return "", err
-    }
-    return hex.EncodeToString(bytes), nil
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 func (s *shareService) RevokeShare(ctx context.Context, shareID int64, userID int64) error {
@@ -71,6 +65,34 @@ func (s *shareService) ListShares(ctx context.Context, userID int64, limit, offs
 	}
 
 	return reports, nil
+}
+
+// ListSharesWithDetails lấy danh sách shares kèm thông tin file và tổng số để hỗ trợ pagination
+func (s *shareService) ListSharesWithDetails(ctx context.Context, userID int64, limit, offset int) (*model.ShareListResponseDTO, error) {
+	// Lấy danh sách shares kèm thông tin file
+	shares, err := s.repo.ListSharesWithFileByOwnerUserID(ctx, userID, limit, offset)
+	if err != nil {
+		log.Printf("Failed to list shares with details for user %d: %v", userID, err)
+		return nil, err
+	}
+
+	// Đếm tổng số shares
+	total, err := s.repo.CountSharesByOwnerUserID(ctx, userID)
+	if err != nil {
+		log.Printf("Failed to count shares for user %d: %v", userID, err)
+		return nil, err
+	}
+
+	if shares == nil {
+		shares = []model.ShareListItemDTO{} // Trả về mảng rỗng thay vì null
+	}
+
+	return &model.ShareListResponseDTO{
+		Shares: shares,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	}, nil
 }
 
 // prepareDownload
@@ -120,7 +142,6 @@ func (s *shareService) CreatePresignedURL(ctx context.Context, shareID int64, re
 	if err != nil {
 		return "", err
 	}
-
 	// presign via repo (MinIO)
 	url, err := s.repo.PresignObject(ctx, objectKey, expirySeconds)
 	if err != nil {
@@ -166,38 +187,38 @@ func (s *shareService) GetMetadata(ctx context.Context, id int64) (*model.ShareM
 	}, nil
 }
 
-func (s *shareService) CreateShare(ctx context.Context, userID int64, req *CreateShareRequest) (*model.Share, error) {
-    // Tạo chuỗi hash unique cho link (ví dụ 8 bytes -> 16 ký tự hex)
-    linkHash, err := generateRandomHash(8) 
-    if err != nil {
-        return nil, err
-    }
+func (s *shareService) CreateShare(ctx context.Context, userID int64, req *model.CreateShareRequest) (*model.Share, error) {
+	// Tạo chuỗi hash unique cho link (ví dụ 8 bytes -> 16 ký tự hex)
+	linkHash, err := generateRandomHash(8)
+	if err != nil {
+		return nil, err
+	}
 
-    // Xử lý mật khẩu (nếu có)
-    var passwordHash string
-    requirePassword := false
-    
-    if req.Password != "" {
-        requirePassword = true
-        // Hash mật khẩu bằng bcrypt
-        bytes, err := bcrypt.GenerateFromPassword([]byte(req.Password), 14)
-        if err != nil {
-            return nil, err
-        }
-        passwordHash = string(bytes)
-    }
+	// Xử lý mật khẩu (nếu có)
+	var passwordHash string
+	requirePassword := false
 
-    // Tạo model share
-    newShare := &model.Share{
-        FileID:          req.FileID,
-        OwnerUserID:     userID,
-        Hash:            linkHash,
-        RequirePassword: requirePassword,
-        HashPassword:    passwordHash,
-        ExpiresAt:       req.ExpiresAt,
-        Revoked:         false,
-    }
+	if req.Password != "" {
+		requirePassword = true
+		// Hash mật khẩu bằng bcrypt
+		bytes, err := bcrypt.GenerateFromPassword([]byte(req.Password), 14)
+		if err != nil {
+			return nil, err
+		}
+		passwordHash = string(bytes)
+	}
 
-    // Gọi Repo để lưu
-    return s.repo.CreateShare(ctx, newShare)
+	// Tạo model share
+	newShare := &model.Share{
+		FileID:          req.FileID,
+		OwnerUserID:     userID,
+		Hash:            linkHash,
+		RequirePassword: requirePassword,
+		HashPassword:    passwordHash,
+		ExpiresAt:       req.ExpiresAt,
+		Revoked:         false,
+	}
+
+	// Gọi Repo để lưu
+	return s.repo.CreateShare(ctx, newShare)
 }

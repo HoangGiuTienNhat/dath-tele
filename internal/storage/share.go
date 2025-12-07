@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"file-sharing/internal/model"
-	"github.com/jmoiron/sqlx"
+
 	"log"
+
+	"github.com/jmoiron/sqlx"
 )
 
 var ErrShareNotFoundOrAccessDenied = errors.New("share not found or access denied")
@@ -18,7 +20,14 @@ type ShareRepository interface {
 	// GetShareByID lấy thông tin share (nếu cần dùng sau này)
 	GetShareByID(ctx context.Context, shareID int64) (*model.Share, error)
 
+	// ListSharesByOwnerUserID lấy danh sách shares của người dùng với pagination
 	ListSharesByOwnerUserID(ctx context.Context, ownerUserID int64, limit, offset int) ([]model.Share, error)
+
+	// ListSharesWithFileByOwnerUserID lấy danh sách shares kèm thông tin file
+	ListSharesWithFileByOwnerUserID(ctx context.Context, ownerUserID int64, limit, offset int) ([]model.ShareListItemDTO, error)
+
+	// CountSharesByOwnerUserID đếm tổng số shares của người dùng
+	CountSharesByOwnerUserID(ctx context.Context, ownerUserID int64) (int64, error)
 
 	// Lấy hash mật khẩu của share
 	GetPasswordHash(ctx context.Context, shareID int64) (string, error)
@@ -32,6 +41,7 @@ type ShareRepository interface {
 	// PresignObject tạo presigned URL cho objectKey, expirySeconds
 	PresignObject(ctx context.Context, objectKey string, expirySeconds int) (string, error)
 
+	// GetShareMetadata lấy metadata đầy đủ của share
 	GetShareMetadata(ctx context.Context, id int64) (*model.ShareMetadata, error)
 
 	// Tạo 1 chia sẻ mới
@@ -127,8 +137,80 @@ func (r *postgresShareRepository) ListSharesByOwnerUserID(ctx context.Context, o
 		log.Printf("Failed to list shares for user ID %d: %v", ownerUserID, err)
 		return nil, err
 	}
+	return shares, nil
+}
+
+// ListSharesWithFileByOwnerUserID retrieves shares with file info for a user
+func (r *postgresShareRepository) ListSharesWithFileByOwnerUserID(ctx context.Context, ownerUserID int64, limit, offset int) ([]model.ShareListItemDTO, error) {
+	const query = `
+		SELECT
+			s.id,
+			s.file_id,
+			s.hash,
+			s.require_password,
+			s.revoked,
+			s.expires_at,
+			s.created_at,
+			s.updated_at,
+			f.filename,
+			f.size AS file_size,
+			f.mime AS file_mime,
+			f.status AS file_status
+		FROM shares s
+		JOIN files f ON s.file_id = f.id
+		WHERE s.owner_user_id = $1
+		ORDER BY s.created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := r.db.QueryxContext(ctx, query, ownerUserID, limit, offset)
+	if err != nil {
+		log.Printf("Failed to list shares with file for user ID %d: %v", ownerUserID, err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var shares []model.ShareListItemDTO
+	for rows.Next() {
+		var item model.ShareListItemDTO
+		err := rows.Scan(
+			&item.ID,
+			&item.FileID,
+			&item.Hash,
+			&item.RequirePassword,
+			&item.Revoked,
+			&item.ExpiresAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+			&item.Filename,
+			&item.FileSize,
+			&item.FileMime,
+			&item.FileStatus,
+		)
+		if err != nil {
+			log.Printf("Failed to scan share row: %v", err)
+			return nil, err
+		}
+		shares = append(shares, item)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return shares, nil
+}
+
+// CountSharesByOwnerUserID counts total shares for a user
+func (r *postgresShareRepository) CountSharesByOwnerUserID(ctx context.Context, ownerUserID int64) (int64, error) {
+	const query = `SELECT COUNT(*) FROM shares WHERE owner_user_id = $1`
+	var count int64
+	err := r.db.GetContext(ctx, &count, query, ownerUserID)
+	if err != nil {
+		log.Printf("Failed to count shares for user ID %d: %v", ownerUserID, err)
+		return 0, err
+	}
+	return count, nil
 }
 
 // GetActiveFilePathByShareID trả về path và filename
