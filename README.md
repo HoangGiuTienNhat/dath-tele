@@ -10,7 +10,7 @@
 | 5   | 2313854 | Trần Hoàng Uyên        |
 | 6   | 2252396 | Nguyễn Trung Kiên      |
 | 7   | 2312397 | Lê Bá Nguyễn           |
-| 8   | 22313452| Lê Trọng Tín           |
+| 8   | 2313452| Lê Trọng Tín           |
 | 9   | 2313739 | Mai Anh Tuấn           |
 |10   | 2312460 | Hoàng Giữ Tiến Nhất    |
 
