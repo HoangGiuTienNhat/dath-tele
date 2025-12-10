@@ -106,6 +106,14 @@ func (h *FileHandler) HandleFileInit(c *gin.Context) {
 
 	// 5. Tạo Presigned URL (dùng MinIO Service)
 	// URL sẽ chỉ cho phép client thực hiện 1 PUT duy nhất
+	if h.minioSvc == nil {
+		log.Printf("MinIO Error: MinIO service not initialized")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "File upload service not available - MinIO not configured",
+		})
+		return
+	}
+
 	uploadURL, err := h.minioSvc.CreatePresignedPutURL(c.Request.Context(), objectKey, req.MimeType)
 	if err != nil {
 		log.Printf("MinIO Error: Failed to generate upload URL: %v", err)

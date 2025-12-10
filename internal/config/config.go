@@ -25,6 +25,11 @@ func LoadConfig(path string) (config *Config, err error) {
 	// Bind environment variables explicitly
 	viper.BindEnv("DATABASE_URL")
 	viper.BindEnv("HTTP_SERVER_ADDRESS")
+	viper.BindEnv("MINIO_ENDPOINT")
+	viper.BindEnv("MINIO_ACCESS_KEY")
+	viper.BindEnv("MINIO_SECRET_KEY")
+	viper.BindEnv("MINIO_BUCKET")
+	viper.BindEnv("MINIO_USE_SSL")
 
 	// Try to read config file, but don't fail if it doesn't exist
 	// (in production on Fly.io, env vars are set directly)

@@ -7,7 +7,7 @@ import (
 	"file-sharing/internal/transport/http"
 	"log"
 
-	"os"
+
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -36,19 +36,22 @@ func main() {
 	userRepo := storage.NewUserRepository(db)
 
 	// Tạo MinIO client repo
-	minioEndpoint := os.Getenv("MINIO_ENDPOINT")
-	minioBucket := os.Getenv("MINIO_BUCKET")
+	minioEndpoint := config.MinioEndpoint
+	minioBucket := config.MinioBucket
 	var minioRepo *storage.MinioRepo
 	if minioEndpoint != "" && minioBucket != "" {
-		minioAccess := os.Getenv("MINIO_ACCESS_KEY")
-		minioSecret := os.Getenv("MINIO_SECRET_KEY")
-		useSSL := strings.ToLower(os.Getenv("MINIO_USE_SSL")) == "true"
+		minioAccess := config.MinioAccessKey
+		minioSecret := config.MinioSecretKey
+		useSSL := strings.ToLower(config.MinioUseSSL) == "true"
 		mr, err := storage.NewMinioRepo(minioEndpoint, minioAccess, minioSecret, minioBucket, useSSL)
 		if err != nil {
-			log.Printf("failed to init minio repo: %v", err)
+			log.Printf("Failed to init minio repo: %v", err)
 		} else {
+			log.Println("MinIO service initialized successfully")
 			minioRepo = mr
 		}
+	} else {
+		log.Println("Warning: MinIO not configured - file upload will not be available")
 	}
 	// Khởi tạo File Repository (Đã sửa lỗi hàm khởi tạo) - nguyen_trung_kien_addded
 	fileRepo := storage.NewPostgresFileRepository(db)

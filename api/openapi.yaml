@@ -35,7 +35,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /v1/files:
+  /api/v1/files:
     post:
       summary: Khởi tạo upload, trả URL hoặc nhận file
       description: |
@@ -128,7 +128,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/files/{file_id}/report-complete:
+  /api/v1/files/{file_id}/report-complete:
     post:
       summary: Báo cáo hoàn tất upload file
       description: |
@@ -183,7 +183,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/files/{file_id}/report:
+  /api/v1/files/{file_id}/report:
     get:
       summary: Lấy báo cáo upload hoàn tất mới nhất
       description: |
@@ -227,7 +227,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/upload-reports:
+  /api/v1/upload-reports:
     get:
       summary: Liệt kê tất cả báo cáo upload của người dùng
       description: |
@@ -280,7 +280,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/shares:
+  /api/v1/shares:
     get:
       summary: Liệt kê các chia sẻ của người gửi
       description: |
@@ -368,7 +368,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/shares/{id}/revoke:
+  /api/v1/shares/{id}/revoke:
     post:
       summary: Thu hồi link chia sẻ
       description: Đánh dấu một link chia sẻ là đã thu hồi.
@@ -409,7 +409,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/shares/{id}/download:
+  /api/v1/shares/{id}/download:
     get:
       summary: Tải file từ link chia sẻ
       description: |
@@ -466,7 +466,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/shares/{id}/authorize:
+  /api/v1/shares/{id}/authorize:
     post:
       summary: Xác thực mật khẩu cho link chia sẻ
       description: |
@@ -520,7 +520,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/shares/{id}:
+  /api/v1/shares/{id}:
     get:
       summary: Lấy metadata của share
       parameters:
