@@ -45,7 +45,7 @@ func main() {
 		useSSL := strings.ToLower(config.MinioUseSSL) == "true"
 		mr, err := storage.NewMinioRepo(minioEndpoint, minioAccess, minioSecret, minioBucket, useSSL)
 		if err != nil {
-			log.Printf("Failed to init minio repo: %v", err)
+			log.Fatalf("Failed to init minio repo: %v", err)
 		} else {
 			log.Println("MinIO service initialized successfully")
 			minioRepo = mr
