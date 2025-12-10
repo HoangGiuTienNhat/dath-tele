@@ -13,6 +13,8 @@ import (
 type AuthServices interface{
 // Hàm AuthorizeSharePassword trả về token truy cập tạm thời nếu mật khẩu đúng
 	AuthorizeSharePasswordAndIssueToken(ctx context.Context, shareID int64, password string) (token string, err error)
+	// VerifyShareToken xác minh token JWT và trả về shareID nếu hợp lệ
+	VerifyShareToken(token string) (shareID int64, err error)
 }
 
 type AuthService struct {
@@ -50,6 +52,28 @@ func GenerateAccessToken(shareID int64) (string, error) {
 	return token.SignedString(secretKey)
 }
 
+func VerifyAccessToken(tokenString string) (int64, error) {
+	secretKey := []byte("your-secret-key") // Phải giống secret key dùng để tạo token
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return secretKey, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	claims, ok := token.Claims.(*jwt.MapClaims)
+	if !ok || !token.Valid {
+		return 0, jwt.ErrSignatureInvalid
+	}
+
+	shareID, ok := (*claims)["share_id"].(float64)
+	if !ok {
+		return 0, jwt.ErrInvalidKeyType
+	}
+
+	return int64(shareID), nil
+}
+
 func (a *AuthService) AuthorizeSharePasswordAndIssueToken(ctx context.Context, shareID int64, password string) (token string, err error) {
 	// Lấy hash mật khẩu từ repository
 	passwordHash, err := a.repo.GetPasswordHash(ctx, shareID)
@@ -67,4 +91,8 @@ func (a *AuthService) AuthorizeSharePasswordAndIssueToken(ctx context.Context, s
 		return "", err
 	}
 	return token, nil
+}
+
+func (a *AuthService) VerifyShareToken(tokenString string) (shareID int64, err error) {
+	return VerifyAccessToken(tokenString)
 }

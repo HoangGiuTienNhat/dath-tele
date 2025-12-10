@@ -22,8 +22,9 @@ type Service interface {
 	// ListSharesWithDetails lấy danh sách shares kèm thông tin file và tổng số
 	ListSharesWithDetails(ctx context.Context, userID int64, limit, offset int) (*model.ShareListResponseDTO, error)
 
-	// Tạo presigned URL cho download
-	CreatePresignedURL(ctx context.Context, shareID int64, requesterUserID int64, expirySeconds int) (string, error)
+	// PrepareDownload validates share, increments counter, and returns presigned URL with metadata
+	// Returns: presignedURL, filename, requirePassword, error
+	PrepareDownload(ctx context.Context, shareID int64, requesterUserID int64) (url string, filename string, requirePassword bool, err error)
 
 	GetMetadata(ctx context.Context, id int64) (*model.ShareMetadataResponseDTO, error)
 	CreateShare(ctx context.Context, userID int64, req *model.CreateShareRequest) (*model.Share, error)
@@ -95,26 +96,26 @@ func (s *shareService) ListSharesWithDetails(ctx context.Context, userID int64, 
 	}, nil
 }
 
-// prepareDownload
-// kiểm tra điều kiện: revoked/expired, check và cập nhật số lần download
-// trả về: objectKey và filename
-func (s *shareService) prepareDownload(ctx context.Context, shareID int64, requesterUserID int64) (string, string, error) {
+// PrepareDownload validates share and returns objectKey, filename, requirePassword
+// Checks: exists, revoked/expired, download limit
+func (s *shareService) PrepareDownload(ctx context.Context, shareID int64, requesterUserID int64) (string, string, bool, error) {
 	// load share meta
 	shareRec, err := s.repo.GetShareByID(ctx, shareID)
+	
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", "", ErrShareNotFoundOrAccessDenied
+		if errors.Is(err, sql.ErrNoRows) { // not found
+			return "", "", false, ErrShareNotFoundOrAccessDenied
 		}
-		return "", "", err
+		return "", "", false, err
 	}
 
 	// check expired/revoked
 	if shareRec != nil {
-		if shareRec.Revoked {
-			return "", "", ErrShareRevokedOrExpired
+		if shareRec.Revoked { // revoked
+			return "", "", false, ErrShareRevokedOrExpired
 		}
-		if shareRec.ExpiresAt != nil && shareRec.ExpiresAt.Before(time.Now()) {
-			return "", "", ErrShareRevokedOrExpired
+		if shareRec.ExpiresAt != nil && shareRec.ExpiresAt.Before(time.Now()) { // expired
+			return "", "", false, ErrShareRevokedOrExpired
 		}
 	}
 
@@ -122,32 +123,31 @@ func (s *shareService) prepareDownload(ctx context.Context, shareID int64, reque
 	objectKey, filename, err := s.repo.GetActiveFilePathByShareID(ctx, shareID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", "", ErrShareNotFoundOrAccessDenied
+			return "", "", false, ErrShareNotFoundOrAccessDenied
 		}
-		return "", "", err
+		return "", "", false, err
 	}
 
 	// check + increment download counter (Hiện là no-op)
 	err = s.repo.CheckAndIncrementDownload(ctx, shareID)
 	if err != nil {
-		return "", "", ErrMaxDownloadsExceeded
+		return "", "", false, ErrMaxDownloadsExceeded
 	}
 
-	return objectKey, filename, nil
-}
+	// generate presigned URL (120 seconds expiry)
+	const expirySec = 120
+	url, err := s.repo.PresignObject(ctx, objectKey, expirySec)
+	if err != nil {
+		return "", "", false, err
+	}
 
-func (s *shareService) CreatePresignedURL(ctx context.Context, shareID int64, requesterUserID int64, expirySeconds int) (string, error) {
-	// prepareDownload kiểm tra các điều kiện và trả về object key + filename + lỗi
-	objectKey, _, err := s.prepareDownload(ctx, shareID, requesterUserID)
-	if err != nil {
-		return "", err
+	// return URL, filename, requirePassword
+	requirePassword := false
+	if shareRec != nil {
+		requirePassword = shareRec.RequirePassword
 	}
-	// presign via repo (MinIO)
-	url, err := s.repo.PresignObject(ctx, objectKey, expirySeconds)
-	if err != nil {
-		return "", err
-	}
-	return url, nil
+
+	return url, filename, requirePassword, nil
 }
 
 var (
