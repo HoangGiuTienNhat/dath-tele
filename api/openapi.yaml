@@ -552,7 +552,7 @@ paths:
 components:
   parameters:
     TelegramUserId:
-      name: c
+      name: X-Telegram-User-Id
       in: header
       required: true
       description: ID người dùng từ Telegram.
