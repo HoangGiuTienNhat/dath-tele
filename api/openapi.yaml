@@ -503,7 +503,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  access_token:
+                    token:
                     type: string
                     description: Token truy cập tạm thời
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -552,7 +552,7 @@ paths:
 components:
   parameters:
     TelegramUserId:
-      name: X-Telegram-User-Id
+      name: c
       in: header
       required: true
       description: ID người dùng từ Telegram.
