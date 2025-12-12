@@ -12,11 +12,13 @@ import (
 
 type ShareHandler struct {
 	service share.Service
+	authService share.AuthServices
 }
 
-func NewShareHandler(service share.Service) *ShareHandler {
+func NewShareHandler(service share.Service, authService share.AuthServices) *ShareHandler {
 	return &ShareHandler{
 		service: service,
+		authService: authService,
 	}
 }
 
@@ -107,30 +109,61 @@ func (h *ShareHandler) HandleDownload(c *gin.Context) {
 		return
 	}
 
-	// tạo presigned url qua service (service sẽ Verify & CheckAndIncrement)
-	const expirySec = 120
-	url, err := h.service.CreatePresignedURL(c.Request.Context(), shareID, user.ID, expirySec)
+	// verify and get presigned URL
+	url, _, requiresPassword, err := h.service.PrepareDownload(c.Request.Context(), shareID, user.ID)
+	// handle errors
 	if err != nil {
 		if errors.Is(err, share.ErrShareNotFoundOrAccessDenied) {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		if errors.Is(err, share.ErrMaxDownloadsExceeded) {
-			c.JSON(http.StatusTooManyRequests, gin.H{"error": "download limit reached"})
 			return
 		}
 		if errors.Is(err, share.ErrShareRevokedOrExpired) {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create presigned url"})
+		if errors.Is(err, share.ErrMaxDownloadsExceeded) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "download limit reached"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare download"})
 		return
 	}
 
-	// Return link
+	// handle password
+	if requiresPassword {
+		authToken := c.GetHeader("X-Share-Token")
+		if authToken == "" {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "share requires password authorization",
+				"code":  "password_required",
+			})
+			return
+		}
+		
+		// Verify token validity
+		tokenShareID, err := h.authService.VerifyShareToken(authToken)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "invalid or expired authorization token",
+				"code":  "invalid_token",
+			})
+			return
+		}
+		
+		// Verify token is for this share
+		if tokenShareID != shareID {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "token is not for this share",
+				"code":  "token_mismatch",
+			})
+			return
+		}
+	}
+
+	// Return presigned URL
 	c.JSON(http.StatusOK, gin.H{
 		"url":        url,
-		"expires_in": expirySec,
+		"expires_in": 120,
 	})
 }
 

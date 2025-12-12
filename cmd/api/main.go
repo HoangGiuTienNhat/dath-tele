@@ -71,7 +71,7 @@ func main() {
 	authMiddleware := http.AuthMiddleware(userRepo)
 	fileHandler := http.NewFileHandler(fileRepo, minioRepo)
 	listFilesHandler := http.ListUserFilesHandler(db.DB)
-	shareHandler := http.NewShareHandler(shareService)
+	shareHandler := http.NewShareHandler(shareService, authService)
 	// Authoize Password Handler
 	authorizePasswordHandler := http.NewAuthorizePasswordHandler(authService)
 

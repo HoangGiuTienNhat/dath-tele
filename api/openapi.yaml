@@ -411,10 +411,11 @@ paths:
 
   /api/v1/shares/{id}/download:
     get:
-      summary: Tải file từ link chia sẻ
+      summary: Lấy presigned URL để tải file từ link chia sẻ
       description: |
-        Xác minh share (không bị revoked, chưa hết hạn và đã authorize nếu yêu cầu mật khẩu),
-        sau đó trả file nhị phân cho client (Content-Disposition sẽ là attachment).
+        Xác minh share (không bị revoked, chưa hết hạn) và kiểm tra yêu cầu mật khẩu.
+        Nếu share yêu cầu mật khẩu, client phải gửi token trong header X-Share-Token (lấy từ endpoint /v1/shares/{id}/authorize).
+        Trả về presigned URL để download file.
       tags:
         - Shares
       parameters:
@@ -427,14 +428,28 @@ paths:
             format: int64
         - $ref: "#/components/parameters/TelegramUserId"
         - $ref: "#/components/parameters/TelegramUsername"
+        - name: X-Share-Token
+          in: header
+          required: false
+          description: Token truy cập tạm thời (bắt buộc nếu share yêu cầu mật khẩu)
+          schema:
+            type: string
       responses:
         "200":
-          description: File được trả về dưới dạng binary (tham số Content-Type dựa trên file)
+          description: Thành công - trả về presigned URL
           content:
-            application/octet-stream:
+            application/json:
               schema:
-                type: string
-                format: binary
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: Presigned URL để download file
+                    example: "http://minio:9000/files/03db6bec052bd9f93c614e85?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20251210%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251210T200746Z&X-Amz-Expires=120&X-Amz-SignedHeaders=host&X-Amz-Signature=1bf91ffb421c8a4e396a466f"
+                  expires_in:
+                    type: integer
+                    description: Thời gian URL hợp lệ (giây)
+                    example: 120
         "400":
           description: Bad Request - share ID không hợp lệ
           content:
@@ -442,19 +457,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "401":
-          description: Unauthorized - thiếu hoặc sai Telegram headers
+          description: Unauthorized - thiếu hoặc sai Telegram headers, hoặc token không hợp lệ
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Forbidden - share đã bị revoke hoặc hết hạn, hoặc chưa được authorize
+          description: Forbidden - share yêu cầu mật khẩu nhưng chưa được authorize, hoặc share đã bị revoke/hết hạn
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Not Found - không tìm thấy share hoặc file trên disk
+          description: Not Found - không tìm thấy share
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too Many Requests - vượt quá giới hạn tải
           content:
             application/json:
               schema:
